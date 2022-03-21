@@ -44,9 +44,23 @@ type Snapshot interface {
 	Consistent() error
 	GetResources(typ string) Resources
 	Clone() Snapshot
+	// deprecated: used to persist snapshot to disk
+	Serialize() []byte
+	// deprecated: used to restore snapshot from disk
+	Deserialize(bytes []byte)
 }
 
+// compile-time assertion
+var _ Snapshot = &NilSnapshot{}
 type NilSnapshot struct{}
+
+func (s NilSnapshot) Deserialize(bytes []byte) {
+	panic("implement me")
+}
+
+func (s NilSnapshot) Serialize() []byte {
+	panic("implement me")
+}
 
 func (NilSnapshot) Consistent() error                 { return nil }
 func (NilSnapshot) GetResources(typ string) Resources { return Resources{} }

@@ -32,6 +32,8 @@ const (
 	UpstreamHost = "127.0.0.1"
 )
 
+// compile-time assertion
+var _ cache.Snapshot = &TestSnapshot{}
 type TestSnapshot struct {
 	// Endpoints are items in the EDS V3 response payload.
 	Endpoints cache.Resources
@@ -44,6 +46,14 @@ type TestSnapshot struct {
 
 	// Listeners are items in the LDS response payload.
 	Listeners cache.Resources
+}
+
+func (s TestSnapshot) Deserialize(bytes []byte) {
+	panic("implement me")
+}
+
+func (s TestSnapshot) Serialize() []byte {
+	return []byte(`{"todo": "impl me in gloo EnvoySnapshot"}`)
 }
 
 func (s TestSnapshot) Consistent() error {
