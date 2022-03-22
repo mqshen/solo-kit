@@ -6,6 +6,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/cache"
 	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/resource"
+	"github.com/solo-io/solo-kit/test/matchers"
 )
 
 // TestIDHash uses ID field as the node hash.
@@ -141,40 +142,15 @@ var _ = Describe("Control Plane Cache", func() {
 	})
 
 	FIt("serializes and deserializes snapshot correctly", func() {
-		names := map[string][]string{
-			resource.EndpointTypeV3: {clusterName},
-			resource.ClusterTypeV3:  nil,
-			resource.RouteTypeV3:    {routeName},
-			resource.ListenerTypeV3: nil,
-		}
-
-		testTypes := []string{
-			resource.EndpointTypeV3,
-			resource.ClusterTypeV3,
-			resource.RouteTypeV3,
-			resource.ListenerTypeV3,
-		}
-
-		c := cache.NewSnapshotCache(true, TestIDHash{}, nil)
+		c := cache.NewSnapshotCacheFromBackup(true, TestIDHash{}, nil, "", map[string]cache.Snapshot{"todotype": &TestSnapshot{}})
 		key := "test"
 
 		_, err := c.GetSnapshot(key)
 		Expect(err).To(MatchError("no snapshot found for node test"))
 
-		watches := make(map[string]chan cache.Response)
-		for _, typ := range testTypes {
-			watches[typ], _ = c.CreateWatch(cache.Request{
-				TypeUrl:       typ,
-				ResourceNames: names[typ],
-				VersionInfo:   version,
-				Node: &envoy_config_core_v3.Node{
-					Id: "test",
-				},
-			})
-		}
-
 		// it's up to implementer to do serialization to json for snapshot;
 		// the per-snapshot code will live in envoy snapshot in gloo, so we return placeholders here for now
+		//snapshot := cache.NilSnapshot{}
 		snapshot := &TestSnapshot{
 			Clusters: cache.NewResources(version, []cache.Resource{
 				resource.NewEnvoyResource(makeCluster(clusterName)),
@@ -186,64 +162,19 @@ var _ = Describe("Control Plane Cache", func() {
 				resource.NewEnvoyResource(makeRoute(routeName, clusterName)),
 			}),
 		}
-
-		//snapshot := NewEasyGeneric{
-		//	Clusters: cache.NewResources(version, []cache.Resource{
-		//		resource.NewEnvoyResource(makeCluster(clusterName)),
-		//	}),
-		//	Listeners: cache.NewResources(version, []cache.Resource{
-		//		resource.NewEnvoyResource(makeHTTPListener(routeName)),
-		//	}),
-		//	Routes: cache.NewResources(version, []cache.Resource{
-		//		resource.NewEnvoyResource(makeRoute(routeName, clusterName)),
-		//	}),
-		//}
-
-		//err = snapshot.Consistent()
-		//Expect(err).ToNot(HaveOccurred())
 		err = c.SetSnapshot(key, snapshot)
 		Expect(err).ToNot(HaveOccurred())
-
-		//snap, err := c.GetSnapshot(key)
-		//Expect(err).ToNot(HaveOccurred())
-		//// check versions for resources
-		//Expect(snap.GetResources(resource.ListenerTypeV3).Version).To(Equal(version))
-		//Expect(snap.GetResources(resource.ClusterTypeV3).Version).To(Equal(version))
-		//Expect(snap.GetResources(resource.RouteTypeV3).Version).To(Equal(version))
-		//// endpoint resource was not set in snapshot
-		//Expect(snap.GetResources(resource.EndpointTypeV3).Version).To(Equal(""))
-
 		bytes := c.Serialize()
-		Expect(bytes).To(Equal([]byte(`tbd`)))
+		Expect(bytes).To(Equal([]byte(`{"test":"eyJ0b2RvIjogImltcGwgbWUgaW4gZ2xvbyBFbnZveVNuYXBzaG90In0="}`)))
+		c.ClearSnapshot(key)
 		c.Deserialize(bytes)
-		//snap, err = c.GetSnapshot("test")
-		//Expect(err).ToNot(HaveOccurred())
-		//Expect(snap.GetResources(resource.ClusterTypeV3).Version).To(Equal(version))
-		//
-		//
-		//newName := "test2"
-		//snapshot2 := &TestSnapshot{
-		//	Endpoints: cache.NewResources(version2, []cache.Resource{
-		//		resource.NewEnvoyResource(makeEndpoint(newName)),
-		//	}),
-		//	Clusters: cache.NewResources(version2, []cache.Resource{
-		//		resource.NewEnvoyResource(makeEDSCluster(newName)),
-		//	}),
-		//}
-		//
-		//err = snapshot2.Consistent()
-		//Expect(err).ToNot(HaveOccurred())
-		//err = c.SetSnapshot(key, snapshot2)
-		//Expect(err).ToNot(HaveOccurred())
-		//
-		//snap2, err := c.GetSnapshot(key)
-		//Expect(err).ToNot(HaveOccurred())
-		//// update to version y
-		//Expect(snap2.GetResources(resource.EndpointTypeV3).Version).To(Equal(version2))
-		//Expect(snap2.GetResources(resource.ClusterTypeV3).Version).To(Equal(version2))
-		//// the cache will reset to empty version for missing resources
-		//Expect(snap2.GetResources(resource.ListenerTypeV3).Version).To(Equal(""))
-		//Expect(snap2.GetResources(resource.RouteTypeV3).Version).To(Equal(""))
+		snap, err := c.GetSnapshot(key)
+		Expect(err).ToNot(HaveOccurred())
+		rs := snap.GetResources(resource.ClusterTypeV3)
+		Expect(rs.Items).To(HaveLen(1))
+		Expect(snapshot.Clusters.Items).To(HaveLen(1))
+		Expect(rs.Items[key].ResourceProto()).To(matchers.MatchProto(snapshot.Clusters.Items[key].ResourceProto()))
+		Expect(rs.Version).To(Equal(snapshot.Clusters.Version))
 	})
 
 })

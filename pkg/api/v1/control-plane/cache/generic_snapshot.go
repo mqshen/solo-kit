@@ -15,15 +15,8 @@
 package cache
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	cluster "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
-	core "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
-	endpoint "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
-	"github.com/golang/protobuf/ptypes"
-	"time"
-
 	"github.com/golang/protobuf/proto"
 )
 
@@ -37,133 +30,11 @@ type GenericSnapshot struct {
 }
 
 func (s *GenericSnapshot) Deserialize(bytes []byte) {
-	//newTyped := &TypedResources{}
-
-	newTypedResourcesMap := map[string]interface{}{}
-	err := json.Unmarshal(bytes, &newTypedResourcesMap)
-	if err != nil {
-		panic(err)
-	}
-
-	newTypedResourcesMap2 := map[string]Resources{}
-	_ = json.Unmarshal(bytes, &newTypedResourcesMap2)
-	// ignore error, all other fields worked
-	//if err != nil {
-	//	panic(err)
-	//}
-
-	// go through and set resource for each!
-	for typeurl, resources := range newTypedResourcesMap2 {
-		for b, _ := range resources.Items {
-			switch typeurl {
-			case "type.googleapis.com/envoy.config.cluster.v3.Cluster":
-				er := NewEnvoyResource(makeCluster("todo"))
-				resources.Items[b] = er
-			}
-		}
-	}
-
-
-	//newResources := newTypedResourcesMap["type.googleapis.com/envoy.config.cluster.v3.Cluster"]
-	//err := json.Unmarshal(bytes, &newResources)
-	//if err != nil {
-	//	panic(err)
-	//}
-
-	c := makeCluster("test")
-	resourcesCopy := Resources{
-		Version: "",
-		Items:   make(map[string]Resource, 1),
-	}
-
-	//into := c.rtype.EmptyProto()
-	//err = proto.Unmarshal(r.Value, into)
-	//if err != nil {
-	//	break
-	//}
-	//resource := c.rtype.ProtoToResource(into)
-	//resources.Items[resource.Self().Name] = resource
-
-    er := NewEnvoyResource(c)
-	resourcesCopy.Items["test"] = er//proto.Clone(c).(Resource)
-	fmt.Printf("envoy resource name %v\n", er.Name())
-	fmt.Printf("envoy refs %v\n", er.References())
-	s.typedResources = TypedResources{}
-	s.typedResources["test"] = resourcesCopy//proto.Clone(v.ResourceProto()).(Resource)
-	//panic("implement me")
-	fmt.Printf("%v\n", s.typedResources)
-	panic("exit")
-}
-
-const (
-	ListenerName = "listener_0"
-	UpstreamHost = "127.0.0.1"
-)
-
-func makeCluster(clusterName string) *cluster.Cluster {
-	return &cluster.Cluster{
-		Name:                 clusterName,
-		ConnectTimeout:       ptypes.DurationProto(5 * time.Second),
-		ClusterDiscoveryType: &cluster.Cluster_Type{Type: cluster.Cluster_LOGICAL_DNS},
-		LbPolicy:             cluster.Cluster_ROUND_ROBIN,
-		LoadAssignment:       makeEndpoint(clusterName),
-		DnsLookupFamily:      cluster.Cluster_V4_ONLY,
-	}
-}
-
-func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
-	return &endpoint.ClusterLoadAssignment{
-		ClusterName: clusterName,
-		Endpoints: []*endpoint.LocalityLbEndpoints{{
-			LbEndpoints: []*endpoint.LbEndpoint{{
-				HostIdentifier: &endpoint.LbEndpoint_Endpoint{
-					Endpoint: &endpoint.Endpoint{
-						Address: &core.Address{
-							Address: &core.Address_SocketAddress{
-								SocketAddress: &core.SocketAddress{
-									Protocol: core.SocketAddress_TCP,
-									Address:  UpstreamHost,
-									PortSpecifier: &core.SocketAddress_PortValue{
-										PortValue: uint32(8080),
-									},
-								},
-							},
-						},
-					},
-				},
-			}},
-		}},
-	}
+	panic("implement me")
 }
 
 func (s *GenericSnapshot) Serialize() []byte {
-
-	// let's start with a single resource
-
-	// convert to json then write out
-	b, err := json.Marshal(s.typedResources)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("output json: %v\n", string(b))
-	return b
-
-	typedResourcesCopy := make(TypedResources)
-	for typeName, resources := range s.typedResources {
-		resourcesCopy := Resources{
-			Version: resources.Version,
-			Items:   make(map[string]Resource, len(resources.Items)),
-		}
-		for k, v := range resources.Items {
-
-			v.ResourceProto().String()
-
-			resourcesCopy.Items[k] = proto.Clone(v.ResourceProto()).(Resource)
-		}
-		typedResourcesCopy[typeName] = resourcesCopy
-	}
-	return nil
-	//return &GenericSnapshot{typedResources: typedResourcesCopy}
+	panic("implement me")
 }
 
 // Combine snapshots with distinct types to one.

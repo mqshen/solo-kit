@@ -15,20 +15,12 @@
 package cache
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ghodss/yaml"
-	"github.com/golang/protobuf/jsonpb"
-	gogoproto "github.com/golang/protobuf/proto"
-	goproto "github.com/golang/protobuf/proto"
-	proto2 "github.com/golang/protobuf/proto"
-	"github.com/golang/protobuf/ptypes"
-	pany "github.com/golang/protobuf/ptypes/any"
 	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/log"
-	"google.golang.org/protobuf/types/known/anypb"
+	"io/ioutil"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -119,166 +111,59 @@ type snapshotCache struct {
 
 	// deprecated: remove me
 	filePath string
+
+	// deprecated: remove me
+	registeredSnapshots map[string]Snapshot
 }
 
 func (cache *snapshotCache) Deserialize(bytes []byte) {
-	gs := &GenericSnapshot{}
-	gs.Deserialize(bytes)
-	cache.snapshots["test"] = gs
-	//panic("implement me")
+	serialized := map[string][]byte{}
+	err := json.Unmarshal(bytes, &serialized)
+	if err != nil {
+		panic(err)
+	}
+	for k, v := range serialized {
+		// TODO(kdorosh) get type from bytes
+		snap, ok := cache.registeredSnapshots["todotype"]
+		if !ok {
+			panic("should not happen")
+		}
+		snap.Deserialize(v)
+		cache.snapshots[k] = snap
+	}
+	fmt.Println("cache snapshots:")
+	for k, v := range cache.snapshots {
+		fmt.Printf("k: %v, v: %v\n", k, string(v.Serialize()))
+	}
 }
 
 func (cache *snapshotCache) Serialize() []byte {
-	// let's start with a single resource
-	snap := cache.snapshots["test"]
-	clusters := snap.GetResources("type.googleapis.com/envoy.config.cluster.v3.Cluster")//resource.ClusterTypeV3)
-
-	item := clusters.Items["test"]
-	//m, err := proto.Marshal(proto2.MessageV2(item.ResourceProto()))
-	//if err != nil {
-	//	panic(err)
-	//}
-	//json123, err := MarshalBytes(item)
-	//if err != nil {
-	//	panic(err)
-	//}
-
-	//any := MustMessageToAny(item.ResourceProto())
-	//if err != nil {
-	//	panic(err)
-	//}
-
-	any, err := anypb.New(proto2.MessageV2(item.ResourceProto()))
-	if err != nil {
-		panic(err)
-	}
-
-	buf := &bytes.Buffer{}
-	err = jsonpbMarshaler.Marshal(buf, any)
-	if err != nil {
-		panic(err)
-	}
-	//bts2 := buf.Bytes()
-
-	//self := item.Self()
-	topLvlBytes, err := json.Marshal(&cache.snapshots)
-	if err != nil {
-		panic(err)
-	}
-
-	//y, _ := yaml.Marshal(cache.snapshots)
-	//fmt.Printf("yaml:\n%v\n", string(y))
-	//fmt.Printf("item self %v\n", item.Self())
-	//fmt.Printf("output higher level json: %v\n", string(topLvlBytes))
-
-	ifce := map[string]interface{}{}
-	yaml.Unmarshal(topLvlBytes, &ifce)
-
-	//c := ifce["Clusters"]
-	//cluster := &cluster.Cluster{}
-	//yaml.Unmarshal(c, &cluster)
-	//NewEnvoyResource(cluster)
-
-
 	serialized := map[string][]byte{}
 	for k, v := range cache.snapshots {
+		//val := string(v.Serialize())
 		serialized[k] = v.Serialize()
 	}
 
-	byts, err := json.Marshal(&serialized)
-	if err != nil {
-		panic(err)
-	}
-
-	//fmt.Printf("output any json: %v\n", string(bts2))
-	//fmt.Printf("output any json: %v\n", any.String())
-	//fmt.Printf("output json: %v\n", string(json123))
-	//fmt.Printf("output string: %v\n", item.ResourceProto().String())
-	//fmt.Printf("output marshal: %v\n", m)
-	return byts
-	//b, err := json.Marshal(item)
+	//buffer := &bytes.Buffer{}
+	//encoder := json.NewEncoder(buffer)
+	//encoder.SetEscapeHTML(false)
+	//err := encoder.Encode(&serialized)
 	//if err != nil {
 	//	panic(err)
 	//}
-	//return b
-}
+	//return buffer.Bytes()
 
-func MessageToAny(msg proto2.Message) (*pany.Any, error) {
-
-	name, err := protoToMessageName(msg)
-	if err != nil {
-		return nil, err
-	}
-	buf, err := protoToMessageBytes(msg)
-	if err != nil {
-		return nil, err
-	}
-	return &pany.Any{
-		TypeUrl: name,
-		Value:   buf,
-	}, nil
-}
-
-func MustAnyToMessage(a *pany.Any) proto2.Message {
-	var x ptypes.DynamicAny
-	err := ptypes.UnmarshalAny(a, &x)
+	bytes, err := json.Marshal(&serialized)
 	if err != nil {
 		panic(err)
 	}
-	return x.Message
-}
-
-func MustMessageToAny(msg proto2.Message) *pany.Any {
-	anymsg, err := MessageToAny(msg)
-	if err != nil {
-		panic(err)
-	}
-	return anymsg
-}
-
-func protoToMessageName(msg proto2.Message) (string, error) {
-	typeUrlPrefix := "type.googleapis.com/"
-
-	if s := gogoproto.MessageName(msg); s != "" {
-		return typeUrlPrefix + s, nil
-	} else if s := goproto.MessageName(msg); s != "" {
-		return typeUrlPrefix + s, nil
-	}
-	return "", fmt.Errorf("can't determine message name")
-}
-
-func protoToMessageBytes(msg proto2.Message) ([]byte, error) {
-	if b, err := protoToMessageBytesGolang(msg); err == nil {
-		return b, nil
-	}
-	return protoToMessageBytesGogo(msg)
-}
-
-func protoToMessageBytesGogo(msg proto2.Message) ([]byte, error) {
-	b := gogoproto.NewBuffer(nil)
-	b.SetDeterministic(true)
-	err := b.Marshal(msg)
-	return b.Bytes(), err
-}
-
-func protoToMessageBytesGolang(msg proto2.Message) ([]byte, error) {
-	b := proto2.NewBuffer(nil)
-	b.SetDeterministic(true)
-	err := b.Marshal(msg)
-	return b.Bytes(), err
-}
-
-var jsonpbMarshaler = &jsonpb.Marshaler{OrigName: false}
-var jsonpbMarshalerEmitZeroValues = &jsonpb.Marshaler{OrigName: false, EmitDefaults: true}
-var jsonpbMarshalerEnumsAsInts = &jsonpb.Marshaler{OrigName: false, EnumsAsInts: true}
-
-func MarshalBytes(res Resource) ([]byte, error) {
-	if pb, ok := res.(proto2.Message); ok {
-		buf := &bytes.Buffer{}
-		err := jsonpbMarshaler.Marshal(buf, pb)
-		return buf.Bytes(), err
-	}
-	return json.Marshal(res)
+	//escapedStr := string(bytes)
+	//unescapedStr, err := strconv.Unquote(escapedStr)
+	//if err != nil {
+	//	panic(err)
+	//}
+	//return []byte(unescapedStr)
+	return bytes
 }
 
 // NewSnapshotCache initializes a simple cache.
@@ -303,7 +188,8 @@ func NewSnapshotCache(ads bool, hash NodeHash, logger log.Logger) SnapshotCache 
 }
 
 // deprecated: prefer NewSnapshotCache once https://github.com/solo-io/gloo/issues/6114 is resolved
-func NewSnapshotCacheFromBackup(ads bool, hash NodeHash, logger log.Logger, filePath string) SnapshotCache {
+func NewSnapshotCacheFromBackup(ads bool, hash NodeHash, logger log.Logger,
+	filePath string, registeredSnapshots map[string]Snapshot) SnapshotCache {
 	sc := &snapshotCache{
 		log:       logger,
 		ads:       ads,
@@ -311,6 +197,16 @@ func NewSnapshotCacheFromBackup(ads bool, hash NodeHash, logger log.Logger, file
 		status:    make(map[string]*statusInfo),
 		hash:      hash,
 		filePath: filePath,
+		registeredSnapshots: registeredSnapshots,
+	}
+
+	if len(sc.filePath) > 0 {
+		bytes, err := ioutil.ReadFile(sc.filePath)
+		if err != nil {
+			sc.log.Debugf("unable to persist snapshot to %v, error %v", sc.filePath, err)
+			return sc
+		}
+		sc.Deserialize(bytes)
 	}
 
 	// TODO(kdorosh) initialize snapshot cache
@@ -323,7 +219,8 @@ func (cache *snapshotCache) SetSnapshot(node string, snapshot Snapshot) error {
 	defer cache.mu.Unlock()
 
 	if len(cache.filePath) > 0 {
-		// TODO(kdorosh)
+		err := ioutil.WriteFile(cache.filePath, snapshot.Serialize(), 0644) // TODO(kdorosh) think ab perms
+		cache.log.Debugf("unable to persist snapshot to %v, error %v", cache.filePath, err)
 	}
 
 	// update the existing entry

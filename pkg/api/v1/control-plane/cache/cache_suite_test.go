@@ -48,15 +48,24 @@ type TestSnapshot struct {
 	Listeners cache.Resources
 }
 
-func (s TestSnapshot) Deserialize(bytes []byte) {
-	panic("implement me")
+func (s *TestSnapshot) Deserialize(bytes []byte) {
+	// TODO(kdorosh) actually implement do not hardcode
+	s.Clusters = cache.NewResources(version, []cache.Resource{
+		resource.NewEnvoyResource(makeCluster(clusterName)),
+	})
+	s.Listeners = cache.NewResources(version, []cache.Resource{
+		resource.NewEnvoyResource(makeHTTPListener(routeName)),
+	})
+	s.Routes = cache.NewResources(version, []cache.Resource{
+		resource.NewEnvoyResource(makeRoute(routeName, clusterName)),
+	})
 }
 
-func (s TestSnapshot) Serialize() []byte {
+func (s *TestSnapshot) Serialize() []byte {
 	return []byte(`{"todo": "impl me in gloo EnvoySnapshot"}`)
 }
 
-func (s TestSnapshot) Consistent() error {
+func (s *TestSnapshot) Consistent() error {
 	endpoints := resource.GetResourceReferences(s.Clusters.Items)
 	if len(endpoints) != len(s.Endpoints.Items) {
 		return fmt.Errorf("mismatched endpoint reference and resource lengths: length of %v does not equal length of %v", endpoints, s.Endpoints.Items)
@@ -71,7 +80,7 @@ func (s TestSnapshot) Consistent() error {
 	}
 	return cache.Superset(routes, s.Routes.Items)
 }
-func (s TestSnapshot) GetResources(typ string) cache.Resources {
+func (s *TestSnapshot) GetResources(typ string) cache.Resources {
 	switch typ {
 	case resource.EndpointTypeV3:
 		return s.Endpoints
@@ -84,7 +93,7 @@ func (s TestSnapshot) GetResources(typ string) cache.Resources {
 	}
 	return cache.Resources{}
 }
-func (s TestSnapshot) Clone() cache.Snapshot {
+func (s *TestSnapshot) Clone() cache.Snapshot {
 	snapshotClone := &TestSnapshot{}
 
 	snapshotClone.Endpoints = cache.Resources{
@@ -120,7 +129,7 @@ func cloneItems(items map[string]cache.Resource) map[string]cache.Resource {
 	return clonedItems
 }
 
-var _ cache.Snapshot = TestSnapshot{}
+var _ cache.Snapshot = &TestSnapshot{}
 
 func makeEndpoint(clusterName string) *endpoint.ClusterLoadAssignment {
 	return &endpoint.ClusterLoadAssignment{

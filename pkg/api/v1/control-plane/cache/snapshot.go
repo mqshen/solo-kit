@@ -54,12 +54,13 @@ type Snapshot interface {
 var _ Snapshot = &NilSnapshot{}
 type NilSnapshot struct{}
 
-func (s NilSnapshot) Deserialize(bytes []byte) {
-	panic("implement me")
+func (s NilSnapshot) Deserialize(_ []byte) {
+	// no-op
 }
 
 func (s NilSnapshot) Serialize() []byte {
-	panic("implement me")
+	// since deserialize is a no-op, we can return empty byte array here
+	return []byte{}
 }
 
 func (NilSnapshot) Consistent() error                 { return nil }
