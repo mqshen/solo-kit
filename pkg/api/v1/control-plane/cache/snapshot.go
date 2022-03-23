@@ -58,7 +58,7 @@ var _ Snapshot = &NilSnapshot{}
 type NilSnapshot struct{}
 
 func (s NilSnapshot) GetTypeUrl() string {
-	panic("implement me")
+	return "nilsnapshot"
 }
 
 func (s NilSnapshot) Deserialize(_ []byte) {

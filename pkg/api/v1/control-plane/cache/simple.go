@@ -82,10 +82,10 @@ type SnapshotCache interface {
 	ClearSnapshot(node string)
 
 	// deprecated: used to persist snapshot to disk
-	Serialize() []byte
+	Serialize() ([]byte, error)
 
 	// deprecated: used to initialize snapshot from disk
-	Deserialize(bytes []byte)
+	Deserialize(bytes []byte) error
 }
 
 // compile-time assertion
@@ -123,23 +123,24 @@ type TypedSnapshot struct {
 	Bytes   []byte
 }
 
-func (cache *snapshotCache) Deserialize(bytes []byte) {
+func (cache *snapshotCache) Deserialize(bytes []byte) error {
 	serialized := map[string]TypedSnapshot{}
 	err := json.Unmarshal(bytes, &serialized)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	for k, v := range serialized {
 		snap, ok := cache.registeredSnapshots[v.TypeUrl]
 		if !ok {
-			panic("should not happen")
+			return errors.New(fmt.Sprintf("%v is not a known type of snpashot", v.TypeUrl))
 		}
 		snap.Deserialize(v.Bytes)
 		cache.snapshots[k] = snap
 	}
+	return nil
 }
 
-func (cache *snapshotCache) Serialize() []byte {
+func (cache *snapshotCache) Serialize() ([]byte, error) {
 	serialized := map[string]TypedSnapshot{}
 	for k, v := range cache.snapshots {
 		serialized[k] = TypedSnapshot{
@@ -149,9 +150,9 @@ func (cache *snapshotCache) Serialize() []byte {
 	}
 	bytes, err := json.Marshal(&serialized)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return bytes
+	return bytes, nil
 }
 
 // NewSnapshotCache initializes a simple cache.
@@ -210,7 +211,11 @@ func (cache *snapshotCache) SetSnapshot(node string, snapshot Snapshot) error {
 	cache.snapshots[node] = snapshot
 
 	if len(cache.filePath) > 0 {
-		err := ioutil.WriteFile(cache.filePath, cache.Serialize(), 0644) // TODO(kdorosh) think ab perms
+		serialized, err := cache.Serialize()
+		if err != nil {
+			cache.log.Debugf("unable to persist snapshot to %v, error %v", cache.filePath, err)
+		}
+		err = ioutil.WriteFile(cache.filePath, serialized, 0644) // TODO(kdorosh) think ab perms
 		if err != nil {
 			cache.log.Debugf("unable to persist snapshot to %v, error %v", cache.filePath, err)
 		}
