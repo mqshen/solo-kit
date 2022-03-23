@@ -36,4 +36,6 @@ type Resource interface {
 	Self() XdsResourceReference
 	ResourceProto() ResourceProto
 	References() []XdsResourceReference
+	MarshalJSON() ([]byte, error)
+	UnmarshalJSON(data []byte) error
 }

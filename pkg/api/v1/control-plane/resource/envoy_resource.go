@@ -1,15 +1,21 @@
 package resource
 
 import (
+	"bytes"
+	"fmt"
 	envoy_config_cluster_v3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoy_config_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoy_config_endpoint_v3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	envoy_config_listener_v3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	envoy_config_route_v3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	hcm_v3 "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
+	"github.com/golang/protobuf/jsonpb"
+	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/any"
+	errors "github.com/rotisserie/eris"
 	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/cache"
+	"google.golang.org/protobuf/types/known/anypb"
 )
 
 type EnvoyResource struct {
@@ -226,4 +232,66 @@ func GetResourceName(res cache.ResourceProto) string {
 	default:
 		return ""
 	}
+}
+
+var jsonpbMarshaler = &jsonpb.Marshaler{OrigName: false}
+var jsonpbUnmarshaler = &jsonpb.Unmarshaler{
+	AllowUnknownFields: false,
+	AnyResolver:        nil,
+}
+
+// TODO:(kdorosh) make part of interface
+func (r *EnvoyResource) MarshalJSON() ([]byte, error) {
+	anyProto, err := anypb.New(proto.MessageV2(r.ResourceProto()))
+	if err != nil {
+		return nil, err
+	}
+	buf := &bytes.Buffer{}
+	err = jsonpbMarshaler.Marshal(buf, anyProto)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (e *EnvoyResource) UnmarshalJSON(data []byte) error {
+	anyProto := any.Any{}
+	err := jsonpbUnmarshaler.Unmarshal(bytes.NewBuffer(data), &anyProto)
+	if err != nil {
+		return err
+	}
+
+	switch anyProto.TypeUrl {
+	case ClusterTypeV3:
+		cluster := &envoy_config_cluster_v3.Cluster{}
+		err = anyProto.UnmarshalTo(cluster)
+		if err != nil {
+			return err
+		}
+		e.ProtoMessage = cluster
+	case RouteTypeV3:
+		cluster := &envoy_config_route_v3.RouteConfiguration{}
+		err = anyProto.UnmarshalTo(cluster)
+		if err != nil {
+			return err
+		}
+		e.ProtoMessage = cluster
+	case ListenerTypeV3:
+		cluster := &envoy_config_listener_v3.Listener{}
+		err = anyProto.UnmarshalTo(cluster)
+		if err != nil {
+			return err
+		}
+		e.ProtoMessage = cluster
+	case EndpointTypeV3:
+		cluster := &envoy_config_endpoint_v3.ClusterLoadAssignment{}
+		err = anyProto.UnmarshalTo(cluster)
+		if err != nil {
+			return err
+		}
+		e.ProtoMessage = cluster
+	default:
+		return errors.New(fmt.Sprintf("unknown type %T", anyProto.TypeUrl))
+	}
+	return nil
 }
