@@ -48,11 +48,18 @@ type Snapshot interface {
 	Serialize() []byte
 	// deprecated: used to restore snapshot from disk
 	Deserialize(bytes []byte)
+	// deprecated: used to serialize/deserialize
+	GetTypeUrl() string
 }
 
 // compile-time assertion
 var _ Snapshot = &NilSnapshot{}
+
 type NilSnapshot struct{}
+
+func (s NilSnapshot) GetTypeUrl() string {
+	panic("implement me")
+}
 
 func (s NilSnapshot) Deserialize(_ []byte) {
 	// no-op

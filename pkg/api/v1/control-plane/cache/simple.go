@@ -19,11 +19,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/log"
 	"io/ioutil"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/log"
 
 	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
@@ -89,6 +90,7 @@ type SnapshotCache interface {
 
 // compile-time assertion
 var _ SnapshotCache = &snapshotCache{}
+
 type snapshotCache struct {
 	log log.Logger
 
@@ -116,53 +118,39 @@ type snapshotCache struct {
 	registeredSnapshots map[string]Snapshot
 }
 
+type TypedSnapshot struct {
+	TypeUrl string
+	Bytes   []byte
+}
+
 func (cache *snapshotCache) Deserialize(bytes []byte) {
-	serialized := map[string][]byte{}
+	serialized := map[string]TypedSnapshot{}
 	err := json.Unmarshal(bytes, &serialized)
 	if err != nil {
 		panic(err)
 	}
 	for k, v := range serialized {
-		// TODO(kdorosh) get type from bytes
-		snap, ok := cache.registeredSnapshots["todotype"]
+		snap, ok := cache.registeredSnapshots[v.TypeUrl]
 		if !ok {
 			panic("should not happen")
 		}
-		snap.Deserialize(v)
+		snap.Deserialize(v.Bytes)
 		cache.snapshots[k] = snap
-	}
-	fmt.Println("cache snapshots:")
-	for k, v := range cache.snapshots {
-		fmt.Printf("k: %v, v: %v\n", k, string(v.Serialize()))
 	}
 }
 
 func (cache *snapshotCache) Serialize() []byte {
-	serialized := map[string][]byte{}
+	serialized := map[string]TypedSnapshot{}
 	for k, v := range cache.snapshots {
-		//val := string(v.Serialize())
-		serialized[k] = v.Serialize()
+		serialized[k] = TypedSnapshot{
+			TypeUrl: v.GetTypeUrl(),
+			Bytes:   v.Serialize(),
+		}
 	}
-
-	//buffer := &bytes.Buffer{}
-	//encoder := json.NewEncoder(buffer)
-	//encoder.SetEscapeHTML(false)
-	//err := encoder.Encode(&serialized)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//return buffer.Bytes()
-
 	bytes, err := json.Marshal(&serialized)
 	if err != nil {
 		panic(err)
 	}
-	//escapedStr := string(bytes)
-	//unescapedStr, err := strconv.Unquote(escapedStr)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//return []byte(unescapedStr)
 	return bytes
 }
 
@@ -191,12 +179,12 @@ func NewSnapshotCache(ads bool, hash NodeHash, logger log.Logger) SnapshotCache 
 func NewSnapshotCacheFromBackup(ads bool, hash NodeHash, logger log.Logger,
 	filePath string, registeredSnapshots map[string]Snapshot) SnapshotCache {
 	sc := &snapshotCache{
-		log:       logger,
-		ads:       ads,
-		snapshots: make(map[string]Snapshot),
-		status:    make(map[string]*statusInfo),
-		hash:      hash,
-		filePath: filePath,
+		log:                 logger,
+		ads:                 ads,
+		snapshots:           make(map[string]Snapshot),
+		status:              make(map[string]*statusInfo),
+		hash:                hash,
+		filePath:            filePath,
 		registeredSnapshots: registeredSnapshots,
 	}
 
@@ -206,10 +194,10 @@ func NewSnapshotCacheFromBackup(ads bool, hash NodeHash, logger log.Logger,
 			sc.log.Debugf("unable to persist snapshot to %v, error %v", sc.filePath, err)
 			return sc
 		}
-		sc.Deserialize(bytes)
+		if len(bytes) > 0 {
+			sc.Deserialize(bytes) // this should throw errors we can log
+		}
 	}
-
-	// TODO(kdorosh) initialize snapshot cache
 	return sc
 }
 
@@ -218,13 +206,15 @@ func (cache *snapshotCache) SetSnapshot(node string, snapshot Snapshot) error {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
-	if len(cache.filePath) > 0 {
-		err := ioutil.WriteFile(cache.filePath, snapshot.Serialize(), 0644) // TODO(kdorosh) think ab perms
-		cache.log.Debugf("unable to persist snapshot to %v, error %v", cache.filePath, err)
-	}
-
 	// update the existing entry
 	cache.snapshots[node] = snapshot
+
+	if len(cache.filePath) > 0 {
+		err := ioutil.WriteFile(cache.filePath, cache.Serialize(), 0644) // TODO(kdorosh) think ab perms
+		if err != nil {
+			cache.log.Debugf("unable to persist snapshot to %v, error %v", cache.filePath, err)
+		}
+	}
 
 	// trigger existing watches for which version changed
 	if info, ok := cache.status[node]; ok {

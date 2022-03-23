@@ -1,6 +1,9 @@
 package cache_test
 
 import (
+	"io/ioutil"
+	"syscall"
+
 	envoy_config_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -142,10 +145,18 @@ var _ = Describe("Control Plane Cache", func() {
 	})
 
 	FIt("serializes and deserializes snapshot correctly", func() {
-		c := cache.NewSnapshotCacheFromBackup(true, TestIDHash{}, nil, "", map[string]cache.Snapshot{"todotype": &TestSnapshot{}})
+
+		f, err := ioutil.TempFile("", "snapshotcache")
+		Expect(err).NotTo(HaveOccurred())
+		defer syscall.Unlink(f.Name())
+
+		empty := &TestSnapshot{}
+		registeredTypes := map[string]cache.Snapshot{empty.GetTypeUrl(): empty}
+
+		c := cache.NewSnapshotCacheFromBackup(true, TestIDHash{}, nil, f.Name(), registeredTypes)
 		key := "test"
 
-		_, err := c.GetSnapshot(key)
+		_, err = c.GetSnapshot(key)
 		Expect(err).To(MatchError("no snapshot found for node test"))
 
 		// it's up to implementer to do serialization to json for snapshot;
@@ -162,13 +173,13 @@ var _ = Describe("Control Plane Cache", func() {
 				resource.NewEnvoyResource(makeRoute(routeName, clusterName)),
 			}),
 		}
-		err = c.SetSnapshot(key, snapshot)
+		err = c.SetSnapshot(key, snapshot) // should write to temp file too
 		Expect(err).ToNot(HaveOccurred())
-		bytes := c.Serialize()
-		Expect(bytes).To(Equal([]byte(`{"test":"eyJ0b2RvIjogImltcGwgbWUgaW4gZ2xvbyBFbnZveVNuYXBzaG90In0="}`)))
-		c.ClearSnapshot(key)
-		c.Deserialize(bytes)
-		snap, err := c.GetSnapshot(key)
+
+		// simulate restart, need to create new cache
+		restoredCache := cache.NewSnapshotCacheFromBackup(true, TestIDHash{}, nil, f.Name(), registeredTypes)
+
+		snap, err := restoredCache.GetSnapshot(key)
 		Expect(err).ToNot(HaveOccurred())
 		rs := snap.GetResources(resource.ClusterTypeV3)
 		Expect(rs.Items).To(HaveLen(1))

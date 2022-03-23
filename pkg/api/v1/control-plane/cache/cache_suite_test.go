@@ -34,6 +34,7 @@ const (
 
 // compile-time assertion
 var _ cache.Snapshot = &TestSnapshot{}
+
 type TestSnapshot struct {
 	// Endpoints are items in the EDS V3 response payload.
 	Endpoints cache.Resources
@@ -46,6 +47,10 @@ type TestSnapshot struct {
 
 	// Listeners are items in the LDS response payload.
 	Listeners cache.Resources
+}
+
+func (s *TestSnapshot) GetTypeUrl() string {
+	return "testsnapshot"
 }
 
 func (s *TestSnapshot) Deserialize(bytes []byte) {
@@ -62,7 +67,7 @@ func (s *TestSnapshot) Deserialize(bytes []byte) {
 }
 
 func (s *TestSnapshot) Serialize() []byte {
-	return []byte(`{"todo": "impl me in gloo EnvoySnapshot"}`)
+	return []byte(`{"clusters": { "nested": { "cluster": "val" } } }`)
 }
 
 func (s *TestSnapshot) Consistent() error {

@@ -17,6 +17,7 @@ package cache
 import (
 	"errors"
 	"fmt"
+
 	"github.com/golang/protobuf/proto"
 )
 
@@ -27,6 +28,10 @@ var _ Snapshot = &GenericSnapshot{}
 
 type GenericSnapshot struct {
 	typedResources TypedResources
+}
+
+func (s *GenericSnapshot) GetTypeUrl() string {
+	panic("implement me")
 }
 
 func (s *GenericSnapshot) Deserialize(bytes []byte) {
