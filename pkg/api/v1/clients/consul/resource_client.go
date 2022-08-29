@@ -149,7 +149,7 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 
 		if res, ok := resource.(resources.InputResource); ok {
 			if currentRes, ok := currentResource.(resources.InputResource); ok {
-				if currentRes.GetStatus() == nil || currentRes.GetStatus() == nil ||
+				if res.GetStatus() == nil || currentRes.GetStatus() == nil ||
 					res.GetStatus().ReportedBy != currentRes.GetStatus().ReportedBy {
 					if original != nil && original.GetMetadata() != nil {
 						return nil, errors.NewResourceVersionErr(meta.Namespace, meta.Name, meta.ResourceVersion, original.GetMetadata().ResourceVersion)
