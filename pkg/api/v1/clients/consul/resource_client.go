@@ -115,6 +115,9 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 		Value:       data,
 		ModifyIndex: modifyIndex,
 	}
+	// if key == "gloo/gloo.solo.io/v1/Proxy/ifp/ifp3-gateway-proxy" {
+	// 	fmt.Printf("write key %s with modifyIndex: %d\n", key, modifyIndex)
+	// }
 	if success, _, err := rc.consul.KV().CAS(kvPair, nil); err != nil {
 		return nil, errors.Wrapf(err, "writing to KV")
 	} else if !success {
@@ -125,13 +128,19 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 
 		if res, ok := resource.(resources.InputResource); ok {
 			if currentRes, ok := currentResource.(resources.InputResource); ok {
-				if res.GetStatus() == nil || currentRes.GetStatus() == nil || res.GetStatus().ReportedBy != currentRes.GetStatus().ReportedBy {
-					return nil, errors.NewResourceVersionErr(meta.Namespace, meta.Name, meta.ResourceVersion, original.GetMetadata().ResourceVersion)
+				if res.GetStatus() == nil || currentRes.GetStatus() == nil ||
+					res.GetStatus().ReportedBy != currentRes.GetStatus().ReportedBy {
+					if original != nil && original.GetMetadata() != nil {
+						return nil, errors.NewResourceVersionErr(meta.Namespace, meta.Name, meta.ResourceVersion, original.GetMetadata().ResourceVersion)
+					}
 				}
 			}
 		}
 
-		return nil, errors.Errorf("writing to KV failed, lastModifyIndex: %d  currentIndex: %s unknown error)", modifyIndex, currentResource.GetMetadata().ResourceVersion)
+		if currentResource != nil && currentResource.GetMetadata() != nil {
+			return nil, errors.Errorf("writing to KV failed, lastModifyIndex: %d  currentIndex: %s unknown error", modifyIndex, currentResource.GetMetadata().ResourceVersion)
+		}
+		return nil, errors.Errorf("writing to KV failed, lastModifyIndex: %d unknown error", modifyIndex)
 	}
 	// return a read object to update the modify index
 
