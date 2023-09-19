@@ -2,7 +2,7 @@ package consul
 
 import (
 	"bytes"
-	"compress/zlib"
+	"compress/gzip"
 	"fmt"
 	"github.com/golang/protobuf/jsonpb"
 	"io/ioutil"
@@ -324,7 +324,7 @@ func (rc *ResourceClient) resourceKey(namespace, name string) string {
 
 func zipData(origin []byte) ([]byte, error) {
 	var b bytes.Buffer
-	w := zlib.NewWriter(&b)
+	w := gzip.NewWriter(&b)
 	_, err := w.Write(origin)
 	if err != nil {
 		return nil, errors.Wrapf(err, "zip data failed")
@@ -339,7 +339,7 @@ func zipData(origin []byte) ([]byte, error) {
 func unzipData(zipContent []byte) ([]byte, error) {
 	var b bytes.Buffer
 	b.Write(zipContent)
-	r, err := zlib.NewReader(&b)
+	r, err := gzip.NewReader(&b)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unzip data failed")
 	}
