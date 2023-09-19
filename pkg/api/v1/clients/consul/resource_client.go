@@ -340,11 +340,11 @@ func unzipData(zipContent []byte) ([]byte, error) {
 	var b bytes.Buffer
 	b.Write(zipContent)
 	r, err := zlib.NewReader(&b)
-	defer r.Close()
-
 	if err != nil {
 		return nil, errors.Wrapf(err, "unzip data failed")
 	}
+
+	defer r.Close()
 
 	originInfo, err := ioutil.ReadAll(r)
 	if err != nil {
