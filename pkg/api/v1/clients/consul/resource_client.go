@@ -206,7 +206,11 @@ func (rc *ResourceClient) List(namespace string, opts clients.ListOpts) (resourc
 	var resourceList resources.ResourceList
 	for _, kvPair := range kvPairs {
 		resource := rc.NewResource()
-		if err := protoutils.UnmarshalYAML(kvPair.Value, resource); err != nil {
+		origin, err := unzipData(kvPair.Value)
+		if err != nil {
+			return nil, errors.Wrapf(err, "list unzip data error")
+		}
+		if err := protoutils.UnmarshalYAML(origin, resource); err != nil {
 			return nil, errors.Wrapf(err, "reading KV into %v", rc.Kind())
 		}
 		resources.UpdateMetadata(resource, func(meta *core.Metadata) {
