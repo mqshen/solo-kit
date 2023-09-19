@@ -1,7 +1,6 @@
 package consul
 
 import (
-	"bytes"
 	"fmt"
 	"github.com/golang/protobuf/jsonpb"
 	"sort"
@@ -15,7 +14,6 @@ import (
 	"github.com/solo-io/solo-kit/pkg/errors"
 	"github.com/solo-io/solo-kit/pkg/utils/protoutils"
 	"k8s.io/apimachinery/pkg/labels"
-	"sigs.k8s.io/yaml"
 )
 
 type ResourceClient struct {
@@ -72,24 +70,6 @@ func (rc *ResourceClient) Read(namespace, name string, opts clients.ReadOpts) (r
 	return resource, nil
 }
 
-func printStatus(key string, resource resources.Resource, modifyIndex uint64, flag string) {
-	if key == "gloo/gloo.solo.io/v1/Proxy/ifp/ifp3-gateway-proxy" {
-		if res, ok := resource.(resources.InputResource); ok {
-			out := &bytes.Buffer{}
-			if err := jsonpbMarshaler.Marshal(out, res.GetStatus()); err != nil {
-				fmt.Printf("failed to marshal proto to bytes")
-			}
-
-			data, err := yaml.JSONToYAML(out.Bytes())
-			if err != nil {
-				fmt.Printf("failed to marshal proto to bytes")
-			}
-			fmt.Printf("%s key: %s modifyIndex: %d index: %s status: %s", flag, key, modifyIndex, res.GetMetadata().ResourceVersion, string(data))
-
-		}
-	}
-}
-
 func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteOpts) (resources.Resource, error) {
 	opts = opts.WithDefaults()
 	if err := resources.Validate(resource); err != nil {
@@ -130,14 +110,10 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 		modifyIndex = uint64(i)
 	}
 
-	printStatus(key, original, modifyIndex, "original")
 	kvPair := &api.KVPair{
 		Key:         key,
 		Value:       data,
 		ModifyIndex: modifyIndex,
-	}
-	if key == "gloo/gloo.solo.io/v1/Proxy/ifp/ifp3-gateway-proxy" {
-		fmt.Printf("write key %s with modifyIndex: %d\n", key, modifyIndex)
 	}
 	if success, _, err := rc.consul.KV().CAS(kvPair, nil); err != nil {
 		return nil, errors.Wrapf(err, "writing to KV")
@@ -149,19 +125,17 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 
 		if res, ok := resource.(resources.InputResource); ok {
 			if currentRes, ok := currentResource.(resources.InputResource); ok {
-				if res.GetStatus().ReportedBy != currentRes.GetStatus().ReportedBy {
+				if res.GetStatus() == nil || currentRes.GetStatus() == nil || res.GetStatus().ReportedBy != currentRes.GetStatus().ReportedBy {
 					return nil, errors.NewResourceVersionErr(meta.Namespace, meta.Name, meta.ResourceVersion, original.GetMetadata().ResourceVersion)
 				}
 			}
 		}
-		printStatus(key, currentResource, modifyIndex, "conflict")
 
 		return nil, errors.Errorf("writing to KV failed, lastModifyIndex: %d  currentIndex: %s unknown error)", modifyIndex, currentResource.GetMetadata().ResourceVersion)
 	}
 	// return a read object to update the modify index
 
 	result, err := rc.Read(meta.Namespace, meta.Name, clients.ReadOpts{Ctx: opts.Ctx})
-	printStatus(key, result, modifyIndex, "")
 	return result, err
 }
 
