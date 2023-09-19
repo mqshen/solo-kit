@@ -1,8 +1,11 @@
 package consul
 
 import (
+	"bytes"
+	"compress/zlib"
 	"fmt"
 	"github.com/golang/protobuf/jsonpb"
+	"io/ioutil"
 	"sort"
 	"strconv"
 	"strings"
@@ -61,7 +64,11 @@ func (rc *ResourceClient) Read(namespace, name string, opts clients.ReadOpts) (r
 		return nil, errors.NewNotExistErr(namespace, name)
 	}
 	resource := rc.NewResource()
-	if err := protoutils.UnmarshalYAML(kvPair.Value, resource); err != nil {
+	origin, err := unzipData(kvPair.Value)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unzip data error")
+	}
+	if err := protoutils.UnmarshalYAML(origin, resource); err != nil {
 		return nil, errors.Wrapf(err, "reading KV into %v", rc.Kind())
 	}
 	resources.UpdateMetadata(resource, func(meta *core.Metadata) {
@@ -128,10 +135,13 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 		modifyIndex = uint64(i)
 	}
 
-	// printStatus(key, original, modifyIndex, "original")
+	zipResult, err := zipData(data)
+	if err != nil {
+		panic(errors.Wrapf(err, "internal err: failed to marshal resource"))
+	}
 	kvPair := &api.KVPair{
 		Key:         key,
-		Value:       data,
+		Value:       zipResult,
 		ModifyIndex: modifyIndex,
 	}
 	// if key == "gloo/gloo.solo.io/v1/Proxy/ifp/ifp3-gateway-proxy" {
@@ -155,8 +165,6 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 				}
 			}
 		}
-		// printStatus(key, currentResource, modifyIndex, "conflict")
-
 		if currentResource != nil && currentResource.GetMetadata() != nil {
 			return nil, errors.Errorf("writing to KV failed, lastModifyIndex: %d  currentIndex: %s unknown error", modifyIndex, currentResource.GetMetadata().ResourceVersion)
 		}
@@ -165,7 +173,6 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 	// return a read object to update the modify index
 
 	result, err := rc.Read(meta.Namespace, meta.Name, clients.ReadOpts{Ctx: opts.Ctx})
-	// printStatus(key, result, modifyIndex, "")
 	return result, err
 }
 
@@ -309,4 +316,36 @@ func (rc *ResourceClient) resourceKey(namespace, name string) string {
 	return strings.Join([]string{
 		rc.resourceDir(namespace),
 		name}, "/")
+}
+
+func zipData(origin []byte) ([]byte, error) {
+	var b bytes.Buffer
+	w := zlib.NewWriter(&b)
+	_, err := w.Write(origin)
+	if err != nil {
+		return nil, errors.Wrapf(err, "zip data failed")
+	}
+	err = w.Close()
+	if err != nil {
+		return nil, errors.Wrapf(err, "zip data close failed")
+	}
+	return b.Bytes(), nil
+}
+
+func unzipData(zipContent []byte) ([]byte, error) {
+	var b bytes.Buffer
+	b.Write(zipContent)
+	r, err := zlib.NewReader(&b)
+	defer r.Close()
+
+	if err != nil {
+		return nil, errors.Wrapf(err, "unzip data failed")
+	}
+
+	originInfo, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, errors.Wrapf(err, "unzip data read bytes failed")
+	}
+
+	return originInfo, nil
 }
