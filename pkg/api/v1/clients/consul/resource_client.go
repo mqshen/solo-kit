@@ -70,6 +70,24 @@ func (rc *ResourceClient) Read(namespace, name string, opts clients.ReadOpts) (r
 	return resource, nil
 }
 
+//func printStatus(key string, resource resources.Resource, modifyIndex uint64, flag string) {
+//	if key == "gloo/gloo.solo.io/v1/Proxy/ifp/ifp3-gateway-proxy" {
+//		if res, ok := resource.(resources.InputResource); ok {
+//			out := &bytes.Buffer{}
+//			if err := jsonpbMarshaler.Marshal(out, res.GetStatus()); err != nil {
+//				fmt.Printf("failed to marshal proto to bytes")
+//			}
+//
+//			data, err := yaml.JSONToYAML(out.Bytes())
+//			if err != nil {
+//				fmt.Printf("failed to marshal proto to bytes")
+//			}
+//			fmt.Printf("%s key: %s modifyIndex: %d index: %s status: %s", flag, key, modifyIndex, res.GetMetadata().ResourceVersion, string(data))
+//
+//		}
+//	}
+//}
+
 func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteOpts) (resources.Resource, error) {
 	opts = opts.WithDefaults()
 	if err := resources.Validate(resource); err != nil {
@@ -110,6 +128,7 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 		modifyIndex = uint64(i)
 	}
 
+	// printStatus(key, original, modifyIndex, "original")
 	kvPair := &api.KVPair{
 		Key:         key,
 		Value:       data,
@@ -136,6 +155,7 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 				}
 			}
 		}
+		// printStatus(key, currentResource, modifyIndex, "conflict")
 
 		if currentResource != nil && currentResource.GetMetadata() != nil {
 			return nil, errors.Errorf("writing to KV failed, lastModifyIndex: %d  currentIndex: %s unknown error", modifyIndex, currentResource.GetMetadata().ResourceVersion)
@@ -145,6 +165,7 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 	// return a read object to update the modify index
 
 	result, err := rc.Read(meta.Namespace, meta.Name, clients.ReadOpts{Ctx: opts.Ctx})
+	// printStatus(key, result, modifyIndex, "")
 	return result, err
 }
 

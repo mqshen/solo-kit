@@ -1,4 +1,4 @@
-module github.com/solo-io/solo-kit
+module github.com/mqshen/solo-kit/v1
 
 go 1.16
 
