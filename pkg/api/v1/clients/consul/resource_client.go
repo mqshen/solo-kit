@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"fmt"
-	"github.com/golang/protobuf/jsonpb"
 	"io/ioutil"
 	"sort"
 	"strconv"
@@ -19,19 +18,29 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 )
 
+const GlooCompressKey = "gloo/compress"
+
 type ResourceClient struct {
 	consul       *api.Client
 	root         string
 	resourceType resources.VersionedResource
+	compress     bool
 }
 
-var jsonpbMarshaler = &jsonpb.Marshaler{OrigName: false}
-
 func NewResourceClient(client *api.Client, rootKey string, resourceType resources.VersionedResource) *ResourceClient {
+	var compressFlag = false
+	kvPair, _, err := client.KV().Get(GlooCompressKey, nil)
+	if err != nil {
+		compressFlag = false
+	}
+	if kvPair != nil && strings.EqualFold(string(kvPair.Value), "true") {
+		compressFlag = true
+	}
 	return &ResourceClient{
 		consul:       client,
 		root:         rootKey,
 		resourceType: resourceType,
+		compress:     compressFlag,
 	}
 }
 
@@ -64,7 +73,7 @@ func (rc *ResourceClient) Read(namespace, name string, opts clients.ReadOpts) (r
 		return nil, errors.NewNotExistErr(namespace, name)
 	}
 	resource := rc.NewResource()
-	origin, err := unzipData(kvPair.Value)
+	origin, err := unzipData(kvPair.Value, rc.compress)
 	if err != nil {
 		return nil, errors.Wrapf(err, "unzip data error")
 	}
@@ -76,24 +85,6 @@ func (rc *ResourceClient) Read(namespace, name string, opts clients.ReadOpts) (r
 	})
 	return resource, nil
 }
-
-//func printStatus(key string, resource resources.Resource, modifyIndex uint64, flag string) {
-//	if key == "gloo/gloo.solo.io/v1/Proxy/ifp/ifp3-gateway-proxy" {
-//		if res, ok := resource.(resources.InputResource); ok {
-//			out := &bytes.Buffer{}
-//			if err := jsonpbMarshaler.Marshal(out, res.GetStatus()); err != nil {
-//				fmt.Printf("failed to marshal proto to bytes")
-//			}
-//
-//			data, err := yaml.JSONToYAML(out.Bytes())
-//			if err != nil {
-//				fmt.Printf("failed to marshal proto to bytes")
-//			}
-//			fmt.Printf("%s key: %s modifyIndex: %d index: %s status: %s", flag, key, modifyIndex, res.GetMetadata().ResourceVersion, string(data))
-//
-//		}
-//	}
-//}
 
 func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteOpts) (resources.Resource, error) {
 	opts = opts.WithDefaults()
@@ -135,7 +126,7 @@ func (rc *ResourceClient) Write(resource resources.Resource, opts clients.WriteO
 		modifyIndex = uint64(i)
 	}
 
-	zipResult, err := zipData(data)
+	zipResult, err := zipData(data, rc.compress)
 	if err != nil {
 		panic(errors.Wrapf(err, "internal err: failed to marshal resource"))
 	}
@@ -206,7 +197,7 @@ func (rc *ResourceClient) List(namespace string, opts clients.ListOpts) (resourc
 	var resourceList resources.ResourceList
 	for _, kvPair := range kvPairs {
 		resource := rc.NewResource()
-		origin, err := unzipData(kvPair.Value)
+		origin, err := unzipData(kvPair.Value, rc.compress)
 		if err != nil {
 			return nil, errors.Wrapf(err, "list unzip data error")
 		}
@@ -263,7 +254,7 @@ func (rc *ResourceClient) Watch(namespace string, opts clients.WatchOpts) (<-cha
 		var resourceList resources.ResourceList
 		for _, kvPair := range kvPairs {
 			resource := rc.NewResource()
-			origin, err := unzipData(kvPair.Value)
+			origin, err := unzipData(kvPair.Value, rc.compress)
 			if err != nil {
 				return nil, errors.Wrapf(err, "list unzip data error")
 			}
@@ -326,7 +317,10 @@ func (rc *ResourceClient) resourceKey(namespace, name string) string {
 		name}, "/")
 }
 
-func zipData(origin []byte) ([]byte, error) {
+func zipData(origin []byte, compress bool) ([]byte, error) {
+	if !compress {
+		return origin, nil
+	}
 	var b bytes.Buffer
 	w := gzip.NewWriter(&b)
 	_, err := w.Write(origin)
@@ -340,19 +334,22 @@ func zipData(origin []byte) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func unzipData(zipContent []byte) ([]byte, error) {
+func unzipData(zipContent []byte, compress bool) ([]byte, error) {
+	if !compress {
+		return zipContent, nil
+	}
 	var b bytes.Buffer
 	b.Write(zipContent)
 	r, err := gzip.NewReader(&b)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unzip data failed")
+		return zipContent, nil
 	}
 
 	defer r.Close()
 
 	originInfo, err := ioutil.ReadAll(r)
 	if err != nil {
-		return nil, errors.Wrapf(err, "unzip data read bytes failed")
+		return zipContent, nil
 	}
 
 	return originInfo, nil
