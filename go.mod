@@ -45,8 +45,7 @@ require (
 	github.com/solo-io/go-list-licenses v0.0.4
 	github.com/solo-io/go-utils v0.21.6
 	github.com/solo-io/k8s-utils v0.0.8
-	github.com/solo-io/protoc-gen-ext v0.0.16
-	github.com/solo-io/protoc-gen-openapi v0.1.1
+	github.com/solo-io/protoc-gen-ext v0.0.19
 	go.opencensus.io v0.24.0
 	go.uber.org/multierr v1.11.0
 	go.uber.org/zap v1.19.0

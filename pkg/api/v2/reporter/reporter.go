@@ -267,8 +267,9 @@ func (r *reporter) WriteReports(ctx context.Context, resourceErrs ResourceReport
 }
 
 // Ideally, this and its caller, WriteReports, would just take the resource ref and its status, rather than the resource itself,
-//    to avoid confusion about whether this may update the resource rather than just its status.
-//    However, this change is not worth the effort and risk right now. (Ariana, June 2020)
+//
+//	to avoid confusion about whether this may update the resource rather than just its status.
+//	However, this change is not worth the effort and risk right now. (Ariana, June 2020)
 func (r *reporter) attemptUpdateStatus(ctx context.Context, client ReporterResourceClient, resourceToWrite resources.InputResource, statusToWrite *core.Status) (resources.Resource, resources.InputResource, error) {
 	var readErr error
 	resourceFromRead, readErr := client.Read(resourceToWrite.GetMetadata().Namespace, resourceToWrite.GetMetadata().Name, clients.ReadOpts{Ctx: ctx})

@@ -1,8 +1,16 @@
 package schemagen
 
 import (
+	"bytes"
 	"fmt"
 
+	"github.com/golang/protobuf/jsonpb"
+	"github.com/golang/protobuf/proto"
+
+	"encoding/json"
+
+	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
+	"github.com/solo-io/solo-kit/pkg/errors"
 	"k8s.io/utils/pointer"
 
 	"github.com/solo-io/solo-kit/pkg/code-generator/collector"
@@ -30,17 +38,15 @@ type ValidationSchemaOptions struct {
 	//	but I wanted to avoid changing the default behavior
 	RemoveDescriptionsFromSchema bool
 
-	// The maximum number of characters to include in a description
-	// If RemoveDescriptionsFromSchema is true, this will be ignored
-	// A 0 value will be interpreted as "include all characters"
-	// Default: 0
-	MaxDescriptionCharacters int
-
 	// Whether to assign Enum fields the `x-kubernetes-int-or-string` property
 	// which allows the value to either be an integer or a string
 	// If this is false, only string values are allowed
 	// Default: false
 	EnumAsIntOrString bool
+
+	// A list of messages (core.solo.io.Status) whose validation schema should
+	// not be generated
+	MessagesWithEmptySchema []string
 }
 
 type JsonSchemaGenerator interface {
@@ -116,12 +122,37 @@ func GenerateOpenApiValidationSchemas(project *model.Project, options *Validatio
 			},
 		}
 
+		status := &core.NamespacedStatuses{
+			Statuses: map[string]*core.Status{},
+		}
+		var marshaller jsonpb.Marshaler
+		marshaller.EnumsAsInts = false  // prefer jsonpb over encoding/json marshaller since it renders enum as string not int (i.e., state is human-readable)
+		marshaller.EmitDefaults = false // keep status as small as possible
+		statusBuf := &bytes.Buffer{}
+		err := marshaller.Marshal(statusBuf, proto.MessageV1(status))
+		if err != nil {
+			return errors.Wrapf(err, "marshalling status resource")
+		}
+		statusBytes := statusBuf.Bytes()
+		statusesBytes, err := json.Marshal(status.Statuses)
+		if err != nil {
+			return errors.Wrapf(err, "marshalling status.statuses resource")
+		}
+
 		// Either use the status defined on the spec, or a generic status
 		statusSchema := specJsonSchema.Properties["status"]
 		if statusSchema.Type == "" {
 			statusSchema = apiextv1.JSONSchemaProps{
 				Type:                   "object",
 				XPreserveUnknownFields: pointer.BoolPtr(true),
+				Default:                &apiextv1.JSON{Raw: statusBytes},
+				Properties: map[string]apiextv1.JSONSchemaProps{
+					"statuses": {
+						Type:                   "object",
+						XPreserveUnknownFields: pointer.BoolPtr(true),
+						Default:                &apiextv1.JSON{Raw: statusesBytes},
+					},
+				},
 			}
 		}
 
