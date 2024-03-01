@@ -45,6 +45,7 @@ func (d *DefaultProtocExecutor) Execute(protoFile string, toFile string, imports
 		//	fmt.Sprintf("--ext_out=%s:%s", goArgsJoined, d.OutputDir),
 		//)
 		cmd.Args = append(cmd.Args,
+			fmt.Sprintf("--go_out=%s", d.OutputDir),
 			fmt.Sprintf("--go-grpc_out=%s", d.OutputDir),
 			fmt.Sprintf("--ext_out=%s:%s", goArgsJoined, d.OutputDir),
 		)
