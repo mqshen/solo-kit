@@ -46,6 +46,7 @@ func (d *DefaultProtocExecutor) Execute(protoFile string, toFile string, imports
 		//)
 		cmd.Args = append(cmd.Args,
 			fmt.Sprintf("--go-grpc_out=%s", d.OutputDir),
+			fmt.Sprintf("--ext_out=%s:%s", goArgsJoined, d.OutputDir),
 		)
 
 		for _, pluginName := range d.CustomPlugins {
